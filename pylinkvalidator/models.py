@@ -81,6 +81,7 @@ PARSER_HTML5 = "html5lib"
 FORMAT_PLAIN = "plain"
 FORMAT_HTML = "html"
 FORMAT_JSON = "json"
+FORMAT_CSV = "csv"
 
 
 WHEN_ALWAYS = "always"
@@ -125,7 +126,7 @@ WorkerInput = namedtuple_with_defaults(
 
 Response = namedtuple_with_defaults(
     "Response", ["content", "status", "exception", "original_url",
-                 "final_url", "is_redirect", "is_timeout", "response_time"])
+                 "final_url", "is_redirect", "is_timeout", "response_time","headers"])
 
 
 ExceptionStr = namedtuple_with_defaults(
@@ -587,8 +588,8 @@ class Config(UTF8Class):
 
         output_group.add_option(
             "-f", "--format", dest="format", action="store",
-            default=FORMAT_PLAIN, choices=[FORMAT_PLAIN],
-            help="Format of the report: plain")
+            default=FORMAT_PLAIN, choices=[FORMAT_PLAIN, FORMAT_CSV],
+            help="Format of the report: plain(default) or csv")
         output_group.add_option(
             "-o", "--output", dest="output", action="store",
             default=None,

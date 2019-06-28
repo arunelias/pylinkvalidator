@@ -3,6 +3,8 @@
 Contains the crawling logic.
 """
 from __future__ import unicode_literals, absolute_import
+import requests
+sess = requests.Session()
 
 import base64
 from collections import defaultdict
@@ -327,15 +329,17 @@ class PageCrawler(object):
             else:
                 final_url_split = get_clean_url_split(response.final_url)
 
-                message = response.content.info()
-                mime_type = get_content_type(message)
+                #message = response.content.info()
+                message = response.content
+                #mime_type = get_content_type(message)
+                mime_type = response.headers['content-type']
                 if self.worker_config.prefer_server_encoding:
                     charset = get_charset(message)
                 else:
                     charset = None
                 links = []
 
-                is_html = mime_type == HTML_MIME_TYPE
+                is_html = mime_type.startswith(HTML_MIME_TYPE)
                 process_time = None
 
                 if is_html and worker_input.should_crawl:
@@ -743,44 +747,59 @@ def open_url(open_func, request_class, url, timeout, timeout_exception,
     :rtype: A Response object
     """
     try:
-        request = request_class(url)
+        #request = request_class(url)
+        headers = dict()
 
         if auth_header:
-            request.add_header(auth_header[0], auth_header[1])
+            #request.add_header(auth_header[0], auth_header[1])
+            headers[auth_header[0]]=auth_header[1]
 
         if extra_headers:
             for header, value in extra_headers.items():
-                request.add_header(header, value)
+                #request.add_header(header, value)
+                headers[header]=value
 
+        request = requests.Request('GET', url, headers=headers)
+        prepped = sess.prepare_request(request)
         start = time.time()
-        output_value = open_func(request, timeout=timeout)
+        #output_value = open_func(request, timeout=timeout)
+        with sess.send(prepped, stream=True, timeout=timeout) as r:
+            #sd
+            response_headers = r.headers
+            if r.headers['content-type'].startswith(HTML_MIME_TYPE):
+                output_value = r.content
+            else:
+                output_value = None
+                print(r.headers['content-type'])
+            final_url = r.url
+            code = r.status_code
         stop = time.time()
-        final_url = output_value.geturl()
-        code = output_value.getcode()
+        #final_url = output_value.geturl()
+        #code = output_value.getcode()
         response = Response(
             content=output_value, status=code, exception=None,
             original_url=url, final_url=final_url,
             is_redirect=final_url != url, is_timeout=False,
-            response_time=stop-start)
-    except HTTPError as http_error:
+            response_time=stop-start, headers=response_headers)
+    except requests.HTTPError as http_error:
         stop = time.time()
         code = http_error.code
         response = Response(
             content=None, status=code, exception=http_error,
             original_url=url, final_url=None, is_redirect=False,
-            is_timeout=False, response_time=stop-start)
+            is_timeout=False, response_time=stop-start, headers=None)
     except timeout_exception as t_exception:
         response = Response(
             content=None, status=None, exception=t_exception,
             original_url=url, final_url=None, is_redirect=False,
-            is_timeout=True, response_time=None)
+            is_timeout=True, response_time=None, headers=None)
     except Exception as exc:
         if logger:
             logger.warning("Exception while opening an URL", exc_info=True)
         response = Response(
             content=None, status=None, exception=exc,
             original_url=url, final_url=None, is_redirect=False,
-            is_timeout=False, response_time=None)
+            is_timeout=False, response_time=None, headers=None)
 
     return response
 

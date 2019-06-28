@@ -12,7 +12,7 @@ from email.mime.text import MIMEText
 
 from pylinkvalidator.compat import StringIO
 from pylinkvalidator.models import (
-    REPORT_TYPE_ERRORS, REPORT_TYPE_ALL, FORMAT_PLAIN)
+    REPORT_TYPE_ERRORS, REPORT_TYPE_ALL, FORMAT_PLAIN, FORMAT_CSV)
 
 
 PLAIN_TEXT = "text/plain"
@@ -54,6 +54,8 @@ def report(site, config, total_time, logger=None):
     try:
         if config.options.format == FORMAT_PLAIN:
             _write_plain_text_report(site, config, output_files, total_time)
+        if config.options.format == FORMAT_CSV:
+            _write_csv_report(site, config, output_files, total_time)
     except Exception:
         if logger:
             logger.exception("An exception occurred while writing the report")
@@ -70,6 +72,13 @@ def _write_plain_text_report(site, config, output_files, total_time):
         _write_plain_text_report_multi(site, config, output_files, total_time)
     else:
         _write_plain_text_report_single(site, config, output_files, total_time)
+
+
+def _write_csv_report(site, config, output_files, total_time):
+    if config.options.multi:
+        _write_plain_text_report_multi(site, config, output_files, total_time)
+    else:
+        _write_csv_report_single(site, config, output_files, total_time)
 
 
 def _write_plain_text_report_multi(site, config, output_files, total_time):
@@ -182,6 +191,78 @@ def _print_details(page_iterator, output_files, config, indent=2):
                        files=output_files)
 
 
+def _write_csv_report_single(site, config, output_files, total_time):
+    oprint("Status,URL,Content message,Source URL,Other sources", files=output_files)
+    start_urls = ",".join((start_url_split.geturl() for start_url_split in site.start_url_splits))
+
+    total_urls = len(site.pages)
+    total_errors = len(site.error_pages)
+
+    if not site.is_ok:
+        global_status = "ERROR"
+        error_summary = "with {0} error(s) ".format(total_errors)
+    else:
+        global_status = "SUCCESS"
+        error_summary = ""
+
+    try:
+        avg_response_time = site.get_average_response_time()
+        avg_process_time = site.get_average_process_time()
+
+        oprint("{0},,Crawled {1} urls {2}in {3:.2f} seconds".format(global_status, total_urls, error_summary, total_time), files=output_files)
+
+        oprint(",,average response time: {0:.2f} seconds".format(avg_response_time), files=output_files)
+
+        oprint(",,average process time: {0:.2f} seconds".format(avg_process_time), files=output_files)
+
+    except Exception:
+        from traceback import print_exc
+        print_exc()
+
+    pages = {}
+
+    if config.options.report_type == REPORT_TYPE_ERRORS:
+        pages = site.error_pages
+    elif config.options.report_type == REPORT_TYPE_ALL:
+        pages = site.pages
+
+    if pages:
+        oprint("\n,,Start URL(s): {0}".format(start_urls), files=output_files)
+        _print_csv_details(pages.values(), output_files, config)
+
+
+def _print_csv_details(page_iterator, output_files, config):
+    for page in page_iterator:
+        content_messages = ""
+        for content_message in page.get_content_messages():
+            content_messages += ",{0}".format(quote_csv_string(content_message))
+        content_messages += ","
+        source_details = ""
+        for source in page.sources:
+            source_details = ",{0}".format(quote_csv_string(source.origin.geturl()))
+            if config.options.show_source:
+                source_details += ",{0}".format(quote_csv_string(truncate(source.origin_str)))
+        oprint("{0},{1}{2}{3}".format(page.get_status_message(), quote_csv_string(page.url_split.geturl()), content_messages, source_details), files=output_files)
+
+def quote_csv_string(message):
+    quote_csv = False
+    try:
+        if not quote_csv and "\"" in message:
+            quote_csv = True
+            if message.startswith("\""):
+                message = message.replace("\"","\"\"") + "\""
+            else:
+                message = "\"" + message.replace("\"","\"\"") + "\""
+        if not quote_csv and "," in message:
+            quote_csv = True
+            message = "\"" + message + "\""
+        if not quote_csv and ";" in message:
+            quote_csv = True
+            message = "\"" + message + "\""
+        return message
+    except:
+        return message
+
 def oprint(message, files):
     """Prints to a sequence of files."""
     for file in files:
@@ -195,7 +276,7 @@ def truncate(value, size=72):
     value = WHITESPACES.sub(" ", value)
 
     if len(value) > size:
-        value = "{0}...".format(value[:size-3])
+        value = "{0}...{1}".format(value[:(size//2)-3],value[(len(value)-(size//2)):len(value)])
 
     return value
 

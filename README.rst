@@ -174,7 +174,7 @@ usage examples.
       These options change the output of the crawler.
 
       -f FORMAT, --format=FORMAT
-                          Format of the report: plain (default)
+                          Format of the report: plain (default) or csv
       -o OUTPUT, --output=OUTPUT
                           Path of the file where the report will be printed.
       -W WHEN, --when=WHEN
